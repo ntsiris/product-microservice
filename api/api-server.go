@@ -2,7 +2,6 @@ package api
 
 import (
 	"database/sql"
-	"log"
 	"net/http"
 )
 
@@ -11,13 +10,13 @@ type APIError struct {
 }
 
 type APIServer struct {
-	address string
+	Address string
 	db      *sql.DB
 }
 
 func NewAPIServer(address string, db *sql.DB) *APIServer {
 	return &APIServer{
-		address: address,
+		Address: address,
 		db:      db,
 	}
 }
@@ -31,8 +30,5 @@ func (server *APIServer) Run() error {
 	subRouter := http.NewServeMux()
 	subRouter.Handle("/api/v1/", http.StripPrefix("/api/v1", router))
 
-	log.Printf("Serving on address: %s\n", server.address)
-
-	return http.ListenAndServe(server.address, subRouter)
-
+	return http.ListenAndServe(server.Address, subRouter)
 }
