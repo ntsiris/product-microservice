@@ -14,8 +14,8 @@ import (
 // Test handleCreate with successful product creation
 func TestHandleCreate_Success(t *testing.T) {
 	mockStore := &storage.MockProductStore{
-		CreateOneFn: func(p *service.Product) (*service.Product, error) {
-			return &service.Product{ID: 1}, nil
+		CreateFn: func(p *service.Product) error {
+			return nil
 		},
 	}
 
@@ -40,16 +40,16 @@ func TestHandleCreate_Success(t *testing.T) {
 		t.Errorf("expected status code 201, got %d", status)
 	}
 
-	if mockStore.CreateOneCalls != 1 {
-		t.Errorf("expected CreatedOne to be called once, got %d", mockStore.CreateOneCalls)
+	if mockStore.CreateCalls != 1 {
+		t.Errorf("expected CreatedOne to be called once, got %d", mockStore.CreateCalls)
 	}
 }
 
 // Test handleCreate with missing request body (BadRequest)
 func TestHandleCreate_BadRequest(t *testing.T) {
 	mockStore := &storage.MockProductStore{
-		CreateOneFn: func(p *service.Product) (*service.Product, error) {
-			return nil, nil // Should not be called in this test
+		CreateFn: func(p *service.Product) error {
+			return nil // Should not be called in this test
 		},
 	}
 
@@ -67,15 +67,15 @@ func TestHandleCreate_BadRequest(t *testing.T) {
 		t.Errorf("expected status code 400, got %d", status)
 	}
 
-	if mockStore.CreateOneCalls != 0 {
-		t.Errorf("expected CreateOne not to be called, got %d", mockStore.CreateOneCalls)
+	if mockStore.CreateCalls != 0 {
+		t.Errorf("expected CreateOne not to be called, got %d", mockStore.CreateCalls)
 	}
 }
 
 // Test handleRetrieveOne with a successful product retrieval
 func TestRetrieveOne(t *testing.T) {
 	mockStore := &storage.MockProductStore{
-		RetrieveOneFn: func(p service.ProductID) (*service.Product, error) {
+		RetrieveFn: func(p service.ProductID) (*service.Product, error) {
 			return &service.Product{
 				ID:          1,
 				Name:        "Test Product",
@@ -91,20 +91,20 @@ func TestRetrieveOne(t *testing.T) {
 	request.SetPathValue("id", "1")
 	recorder := httptest.NewRecorder()
 
-	makeHTTPHandleFunc(handler.handleRetrieveOne)(recorder, request)
+	makeHTTPHandleFunc(handler.handleRetrieve)(recorder, request)
 
 	if status := recorder.Code; status != http.StatusOK {
 		t.Errorf("expected status code 200, got %d", status)
 	}
 
-	if mockStore.RetrieveOneCalls != 1 {
-		t.Errorf("expected RetrieveOne to be called once, got %d", mockStore.RetrieveOneCalls)
+	if mockStore.RetrieveCalls != 1 {
+		t.Errorf("expected RetrieveOne to be called once, got %d", mockStore.RetrieveCalls)
 	}
 }
 
 func TestHandleRetrieveOne_NotFound(t *testing.T) {
 	mockStore := &storage.MockProductStore{
-		RetrieveOneFn: func(p service.ProductID) (*service.Product, error) {
+		RetrieveFn: func(p service.ProductID) (*service.Product, error) {
 			return nil, fmt.Errorf("no product found") // Simulate no product found
 		},
 	}
@@ -115,13 +115,13 @@ func TestHandleRetrieveOne_NotFound(t *testing.T) {
 	request.SetPathValue("id", "99")
 	recorder := httptest.NewRecorder()
 
-	makeHTTPHandleFunc(handler.handleRetrieveOne)(recorder, request)
+	makeHTTPHandleFunc(handler.handleRetrieve)(recorder, request)
 
 	if status := recorder.Code; status != http.StatusNotFound {
 		t.Errorf("expected status code 404, got %d", status)
 	}
 
-	if mockStore.RetrieveOneCalls != 1 {
-		t.Errorf("expected RetrieveOne to be called once, got %d", mockStore.CreateOneCalls)
+	if mockStore.RetrieveCalls != 1 {
+		t.Errorf("expected RetrieveOne to be called once, got %d", mockStore.CreateCalls)
 	}
 }

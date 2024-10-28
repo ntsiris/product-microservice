@@ -30,9 +30,13 @@ func NewProductHandler(userStore storage.ProductStore) *ProductHandler {
 }
 
 func (handler *ProductHandler) RegisterRoutes(router *http.ServeMux) {
-	router.HandleFunc("POST /add", makeHTTPHandleFunc(handler.handleCreate))
-	router.HandleFunc("GET /get/{id}", makeHTTPHandleFunc(handler.handleRetrieveOne))
+	router.HandleFunc("POST /create", makeHTTPHandleFunc(handler.handleCreate))
+
+	router.HandleFunc("GET /product/{id}", makeHTTPHandleFunc(handler.handleRetrieve))
+	router.HandleFunc("GET /products", makeHTTPHandleFunc(handler.handleRetrieveAll))
+
 	router.HandleFunc("PUT /update/{id}", makeHTTPHandleFunc(handler.handleUpdate))
+	// router.HandleFunc("PUT /update-batch", makeHTTPHandleFunc(handler.handleUpdate))
 }
 
 func (handler *ProductHandler) handleCreate(w http.ResponseWriter, r *http.Request) error {
@@ -57,7 +61,7 @@ func (handler *ProductHandler) handleCreate(w http.ResponseWriter, r *http.Reque
 	}
 
 	product := service.NewProduct(productPayload)
-	product, err := handler.store.CreateOne(product)
+	err := handler.store.Create(product)
 	if err != nil {
 		return &types.APIError{
 			Code:          http.StatusInternalServerError,
@@ -70,7 +74,7 @@ func (handler *ProductHandler) handleCreate(w http.ResponseWriter, r *http.Reque
 	return utils.WriteJSON(w, http.StatusCreated, product)
 }
 
-func (handler *ProductHandler) handleRetrieveOne(w http.ResponseWriter, r *http.Request) error {
+func (handler *ProductHandler) handleRetrieve(w http.ResponseWriter, r *http.Request) error {
 	requestedIDstr := r.PathValue("id")
 
 	requestedID, err := strconv.ParseInt(requestedIDstr, 10, 64)
@@ -82,7 +86,7 @@ func (handler *ProductHandler) handleRetrieveOne(w http.ResponseWriter, r *http.
 			EmbeddedError: err.Error(),
 		}
 	}
-	requestedProduct, err := handler.store.RetrieveOne(service.ProductID(requestedID))
+	requestedProduct, err := handler.store.Retrieve(service.ProductID(requestedID))
 	if err != nil {
 		return &types.APIError{
 			Code:          http.StatusNotFound,
@@ -93,6 +97,59 @@ func (handler *ProductHandler) handleRetrieveOne(w http.ResponseWriter, r *http.
 	}
 
 	return utils.WriteJSON(w, http.StatusOK, requestedProduct)
+}
+
+func (handler *ProductHandler) handleRetrieveAll(w http.ResponseWriter, r *http.Request) error {
+	pageParam := r.URL.Query().Get("page")
+	limitParam := r.URL.Query().Get("limit")
+
+	page := 1
+	limit := 10
+
+	var err error
+	if pageParam != "" {
+		page, err = strconv.Atoi(pageParam)
+		if err != nil || page < 1 {
+			return &types.APIError{
+				Code:          http.StatusBadRequest,
+				Message:       "invalid page number",
+				Operation:     types.FormatOperation(r.Method, r.URL.Path),
+				EmbeddedError: err.Error(),
+			}
+		}
+	}
+
+	if limitParam != "" {
+		limit, err = strconv.Atoi(limitParam)
+		if err != nil || limit < 1 {
+			return &types.APIError{
+				Code:          http.StatusBadRequest,
+				Message:       "invalid limit number",
+				Operation:     types.FormatOperation(r.Method, r.URL.Path),
+				EmbeddedError: err.Error(),
+			}
+		}
+	}
+
+	products, err := handler.store.RetrieveAll(page, limit)
+	if err != nil {
+		return &types.APIError{
+			Code:          http.StatusInternalServerError,
+			Message:       "failed to retrieve products",
+			Operation:     types.FormatOperation(r.Method, r.URL.Path),
+			EmbeddedError: err.Error(),
+		}
+	}
+
+	if products == nil {
+		return &types.APIError{
+			Code:      http.StatusNotFound,
+			Message:   "no products found",
+			Operation: types.FormatOperation(r.Method, r.URL.Path),
+		}
+	}
+
+	return utils.WriteJSON(w, http.StatusOK, products)
 }
 
 func (handler *ProductHandler) handleUpdate(w http.ResponseWriter, r *http.Request) error {

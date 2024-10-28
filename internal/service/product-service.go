@@ -29,33 +29,21 @@ type ProductCreationPayload struct {
 // It includes methods to create, retrieve, update, and delete products.
 type ProductCRUDer interface {
 	// CreateOne creates a new product using the provided payload.
-	CreateOne(*Product) (*Product, error)
-
-	// CreateMany creates a batch of new products using the provided payloads.
-	// On failure error is returned and a slice of Pointers to Products that
-	// contains the products that were successfully created.
-	CreateMany([]*Product) ([]*Product, error)
+	// The Product parameter might be modified
+	Create(*Product) error
 
 	// RetrieveAll returns a list of all available products.
-	RetrieveAll() ([]*Product, error)
+	RetrieveAll(int, int) ([]*Product, error)
 
 	// RetrieveOne returns a product by its unique ID.
-	RetrieveOne(ProductID) (*Product, error)
-
-	// RetrieveMany returns a list of products that match the given IDs.
-	RetrieveMany([]ProductID) ([]*Product, error)
+	Retrieve(ProductID) (*Product, error)
 
 	// UpdateOne updates the details of an existing product.
-	UpdateOne(*Product) error
-
-	// UpdateMany updates the details of a batch of products existing in the store.
-	UpdateMany([]*Product) error
+	// The Product parameter might be modified
+	Update(*Product) error
 
 	// DeleteOne removes a product from the store.
-	DeleteOne(*Product) error
-
-	// DeleteMany removes a batch of products from the store.
-	DeleteMany([]*Product) error
+	Delete(*Product) error
 }
 
 func NewProduct(productPayload *ProductCreationPayload) *Product {
