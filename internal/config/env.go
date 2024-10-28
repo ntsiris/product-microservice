@@ -4,22 +4,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/lpernett/godotenv"
 )
-
-type APIServerConfig struct {
-	PublicHost string
-	Port       string
-}
-
-type DBConfig struct {
-	Driver   string
-	User     string
-	Password string
-	Address  string
-	Name     string
-}
 
 var EnvAPIServerConfig APIServerConfig
 var EnvDBConfig DBConfig
@@ -27,18 +15,21 @@ var EnvDBConfig DBConfig
 func init() {
 	log.Print("Initializing configuration from environment")
 	godotenv.Load()
-	EnvAPIServerConfig = initAPIServerConfig()
-	EnvDBConfig = initDBConfig()
+	EnvAPIServerConfig = initAPIServerConfigFromEnv()
+	EnvDBConfig = initDBConfigFromEnv()
 }
 
-func initAPIServerConfig() APIServerConfig {
+func initAPIServerConfigFromEnv() APIServerConfig {
 	return APIServerConfig{
-		PublicHost: getEnv("PUBLIC_HOST", "localhost"),
-		Port:       getEnv("PORT", "8080"),
+		PublicHost:    getEnv("PUBLIC_HOST", "localhost"),
+		Port:          getEnv("PORT", "8080"),
+		MigrateUp:     getEnvBool("MIGRATE_UP", true),
+		MigrateDown:   getEnvBool("MIGRATE_DOWN", false),
+		MigrationPath: getEnv("MIGRATION_PATH", "migrations/"),
 	}
 }
 
-func initDBConfig() DBConfig {
+func initDBConfigFromEnv() DBConfig {
 	return DBConfig{
 		Driver:   getEnv("DB_DRIVER", "mysql"),
 		User:     getEnv("DB_USER", "root"),
@@ -51,6 +42,15 @@ func initDBConfig() DBConfig {
 func getEnv(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok {
 		return value
+	}
+
+	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	if valStr, ok := os.LookupEnv(key); ok {
+		valStr = strings.ToLower(valStr)
+		return valStr == "true" || valStr == "t" || valStr == "1"
 	}
 
 	return fallback
