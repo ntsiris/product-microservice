@@ -11,12 +11,14 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+// ProductHandler is an HTTP handler for managing product-related operations.
 type ProductHandler struct {
-	store storage.ProductStore
+	store storage.ProductStore // store provides an interface to perform CRUD operations on products.
 }
 
 type apiFunc func(http.ResponseWriter, *http.Request) error
 
+// makeHTTPHandleFunc wraps an apiFunc and handles any errors, sending JSON responses with error details.
 func makeHTTPHandleFunc(f apiFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := f(w, r); err != nil {
@@ -25,10 +27,12 @@ func makeHTTPHandleFunc(f apiFunc) http.HandlerFunc {
 	}
 }
 
+// NewProductHandler creates a new ProductHandler with the specified ProductStore.
 func NewProductHandler(userStore storage.ProductStore) *ProductHandler {
 	return &ProductHandler{store: userStore}
 }
 
+// RegisterRoutes registers the product-related routes to the provided router.
 func (handler *ProductHandler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("POST /product/create", makeHTTPHandleFunc(handler.handleCreate))
 
@@ -40,6 +44,7 @@ func (handler *ProductHandler) RegisterRoutes(router *http.ServeMux) {
 	router.HandleFunc("DELETE /product/delete/{id}", makeHTTPHandleFunc(handler.handleDelete))
 }
 
+// handleCreate handles the creation of a new product by parsing the payload, validating it, and storing it in the database.
 func (handler *ProductHandler) handleCreate(w http.ResponseWriter, r *http.Request) error {
 	productPayload := new(service.ProductCreationPayload)
 
@@ -65,6 +70,7 @@ func (handler *ProductHandler) handleCreate(w http.ResponseWriter, r *http.Reque
 	return utils.WriteJSON(w, http.StatusCreated, product)
 }
 
+// handleRetrieve retrieves a single product by its ID and returns it in JSON format.
 func (handler *ProductHandler) handleRetrieve(w http.ResponseWriter, r *http.Request) error {
 	requestedID, err := parseIntPathValue(r, "id")
 	if err != nil {
@@ -79,6 +85,7 @@ func (handler *ProductHandler) handleRetrieve(w http.ResponseWriter, r *http.Req
 	return utils.WriteJSON(w, http.StatusOK, requestedProduct)
 }
 
+// handleRetrieveAll retrieves all products, with optional pagination, and returns them in JSON format.
 func (handler *ProductHandler) handleRetrieveAll(w http.ResponseWriter, r *http.Request) error {
 	pageParam := r.URL.Query().Get("page")
 	limitParam := r.URL.Query().Get("limit")
@@ -128,6 +135,7 @@ func (handler *ProductHandler) handleRetrieveAll(w http.ResponseWriter, r *http.
 	return utils.WriteJSON(w, http.StatusOK, products)
 }
 
+// handleUpdate handles updating an existing product's details based on the payload.
 func (handler *ProductHandler) handleUpdate(w http.ResponseWriter, r *http.Request) error {
 	updatePayload := service.NewDefaultUpdatePayload()
 	if err := parsePayload(r, updatePayload); err != nil {
@@ -158,6 +166,7 @@ func (handler *ProductHandler) handleUpdate(w http.ResponseWriter, r *http.Reque
 	return utils.WriteJSON(w, http.StatusOK, product)
 }
 
+// handleDelete handles the deletion of a product specified by its ID.
 func (handler *ProductHandler) handleDelete(w http.ResponseWriter, r *http.Request) error {
 
 	requestedID, err := parseIntPathValue(r, "id")
@@ -183,6 +192,7 @@ func (handler *ProductHandler) handleDelete(w http.ResponseWriter, r *http.Reque
 	return utils.WriteJSON(w, http.StatusOK, requestedProduct)
 }
 
+// retrieveProduct retrieves a product by its ID from the storage layer, returning a Not Found error if the product does not exist.
 func (handler *ProductHandler) retrieveProduct(r *http.Request, productID service.ProductID) (*service.Product, error) {
 	requestedProduct, err := handler.store.Retrieve(service.ProductID(productID))
 	if err != nil {
@@ -197,6 +207,7 @@ func (handler *ProductHandler) retrieveProduct(r *http.Request, productID servic
 	return requestedProduct, nil
 }
 
+// parsePayload parses the JSON payload of an HTTP request into the specified structure.
 func parsePayload(r *http.Request, payload any) error {
 	if err := utils.ParseJSON(r, payload); err != nil {
 		return &types.APIError{
@@ -210,6 +221,7 @@ func parsePayload(r *http.Request, payload any) error {
 	return nil
 }
 
+// validateStruct validates the provided structure using the registered validators, returning an error if validation fails.
 func validateStruct(r *http.Request, st any) error {
 	if err := utils.Validate.Struct(st); err != nil {
 		return &types.APIError{
@@ -223,6 +235,7 @@ func validateStruct(r *http.Request, st any) error {
 	return nil
 }
 
+// parseIntPathValue parses an integer path parameter from the URL, returning a formatted error if parsing fails.
 func parseIntPathValue(r *http.Request, name string) (int64, error) {
 	requestedValueStr := r.PathValue(name)
 

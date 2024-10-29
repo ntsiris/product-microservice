@@ -17,7 +17,7 @@ func main() {
 	defer resourceCleanUp(logFile)
 
 	var store = storage.MySQLStore{}
-	err := store.InitStore(&config.EnvDBConfig)
+	err := store.InitStore(&config.EnvStorageConfig)
 	if err != nil {
 		log.Fatalf("Store Initialization %v", err)
 	}

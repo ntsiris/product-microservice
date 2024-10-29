@@ -85,7 +85,7 @@ func (mock *MockProductStore) Delete(product *service.Product) error {
 }
 
 // InitStore will not be tested since it can not be mocked.
-func (mock *MockProductStore) InitStore(config *config.DBConfig) error {
+func (mock *MockProductStore) InitStore(config *config.StorageConfig) error {
 	return mock.Err
 }
 

@@ -69,7 +69,7 @@ func TestInitDBConfigFromEnv(t *testing.T) {
 		os.Setenv("DB_PORT", "5432")
 		os.Setenv("DB_NAME", "testDB")
 
-		config := initDBConfigFromEnv()
+		config := initStorageConfigFromEnv()
 
 		assert.Equal(t, "postgres", config.Driver)
 		assert.Equal(t, "testuser", config.User)
@@ -86,7 +86,7 @@ func TestInitDBConfigFromEnv(t *testing.T) {
 		os.Unsetenv("DB_PORT")
 		os.Unsetenv("DB_NAME")
 
-		config := initDBConfigFromEnv()
+		config := initStorageConfigFromEnv()
 
 		assert.Equal(t, "mysql", config.Driver)
 		assert.Equal(t, "root", config.User)
