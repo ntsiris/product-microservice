@@ -9,7 +9,7 @@ type ProductStore interface {
 	service.ProductCRUDer
 	InitStore(*config.DBConfig) error
 	VerifyStoreConnection() error
+	Close() error
 	RunMigrationUp(string) error
 	RunMigrationDown(string) error
-	Close() error
 }

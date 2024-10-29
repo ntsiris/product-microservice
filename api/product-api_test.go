@@ -14,7 +14,7 @@ import (
 // Test handleCreate with successful product creation
 func TestHandleCreate_Success(t *testing.T) {
 	mockStore := &storage.MockProductStore{
-		CreateFn: func(p *service.Product) error {
+		CreateFn: func(p **service.Product) error {
 			return nil
 		},
 	}
@@ -48,7 +48,7 @@ func TestHandleCreate_Success(t *testing.T) {
 // Test handleCreate with missing request body (BadRequest)
 func TestHandleCreate_BadRequest(t *testing.T) {
 	mockStore := &storage.MockProductStore{
-		CreateFn: func(p *service.Product) error {
+		CreateFn: func(p **service.Product) error {
 			return nil // Should not be called in this test
 		},
 	}

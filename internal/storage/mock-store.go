@@ -9,7 +9,7 @@ type MockProductStore struct {
 	VerifyStoreFn    func() error
 	VerifyStoreCalls int
 
-	CreateFn    func(*service.Product) error
+	CreateFn    func(**service.Product) error
 	CreateCalls int
 
 	RetrieveAllFn    func(page, limit int) ([]*service.Product, error)
@@ -18,7 +18,7 @@ type MockProductStore struct {
 	RetrieveFn    func(service.ProductID) (*service.Product, error)
 	RetrieveCalls int
 
-	UpdateFn    func(product *service.Product) error
+	UpdateFn    func(product **service.Product) error
 	UpdateCalls int
 
 	DeleteFn    func(product *service.Product) error
@@ -34,7 +34,7 @@ func (mock *MockProductStore) VerifyStoreConnection() error {
 	return mock.VerifyStoreFn()
 }
 
-func (mock *MockProductStore) Create(product *service.Product) error {
+func (mock *MockProductStore) Create(product **service.Product) error {
 	mock.CreateCalls++
 	return mock.CreateFn(product)
 }
@@ -49,7 +49,7 @@ func (mock *MockProductStore) Retrieve(id service.ProductID) (*service.Product, 
 	return mock.RetrieveFn(id)
 }
 
-func (mock *MockProductStore) Update(product *service.Product) error {
+func (mock *MockProductStore) Update(product **service.Product) error {
 	mock.UpdateCalls++
 	return mock.UpdateFn(product)
 }

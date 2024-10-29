@@ -20,98 +20,29 @@ type MySQLStore struct {
 
 const SQL_DRIVER string = "mysql"
 
-func (mysqlStore *MySQLStore) InitStore(config *config.DBConfig) error {
-	mysqlConfig := mysql.Config{
-		User:   config.User,
-		Passwd: config.Password,
-		Addr:   config.Address,
-		DBName: config.Name,
-	}
-
-	mysqlStore.dbURL = mysqlConfig.FormatDSN()
-	db, err := sql.Open(SQL_DRIVER, mysqlStore.dbURL)
-
-	if err != nil {
-		return fmt.Errorf("failed to acquire storage connection handle: %v", err)
-	}
-
-	mysqlStore.db = db
-
-	return nil
-}
-
-func (mysqlStore *MySQLStore) VerifyStoreConnection() error {
-	err := mysqlStore.db.Ping()
-	if err != nil {
-		return fmt.Errorf("establish connection to the storage: %v", err)
-	}
-
-	return nil
-}
-
-func (mysqlStore *MySQLStore) Close() error {
-	return mysqlStore.db.Close()
-}
-
-func (mysqlStore *MySQLStore) setUpMigration(migrationPath string) (*migrate.Migrate, error) {
-	driver, err := mysqlMigrate.WithInstance(mysqlStore.db, &mysqlMigrate.Config{})
-	if err != nil {
-		return nil, fmt.Errorf("initialize migration driver: %v", err)
-	}
-
-	migrator, err := migrate.NewWithDatabaseInstance(
-		fmt.Sprintf("file://%s", migrationPath),
-		SQL_DRIVER,
-		driver)
-	if err != nil {
-		return nil, fmt.Errorf("establish connection to the database: %v", err)
-	}
-
-	return migrator, nil
-}
-
-func (mysqlStore *MySQLStore) RunMigrationUp(migrationPath string) error {
-	migrator, err := mysqlStore.setUpMigration(migrationPath)
-	if err != nil {
-		return err
-	}
-
-	if err := migrator.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("run up migrations: %v", err)
-	}
-
-	return nil
-}
-
-func (mysqlStore *MySQLStore) RunMigrationDown(migrationPath string) error {
-	migrator, err := mysqlStore.setUpMigration(migrationPath)
-	if err != nil {
-		return err
-	}
-
-	if err := migrator.Down(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("run down migrations: %v", err)
-	}
-
-	return nil
-}
-
-func (mysqlStore *MySQLStore) Create(product *service.Product) error {
+func (mysqlStore *MySQLStore) Create(product **service.Product) error {
 	query := `INSERT INTO products (name, description, price, discount, quantity, createdAt, lastUpdated) VALUES (?, ?, ?, ?, ?, ?, ?)`
 
-	result, err := mysqlStore.db.Exec(query, product.Name, product.Description, product.Price, product.Discount, product.Quantity, product.CreatedAt, product.LastUpdated)
+	result, err := mysqlStore.db.Exec(query,
+		(*product).Name,
+		(*product).Description,
+		(*product).Price,
+		(*product).Discount,
+		(*product).Quantity,
+		(*product).CreatedAt,
+		(*product).LastUpdated)
 	if err != nil {
 		return err
 	}
 
 	productID, err := result.LastInsertId()
 	if err != nil {
-		return fmt.Errorf("could not retrieve last inserted ID: %v", err)
+		return fmt.Errorf("error: could not retrieve last inserted ID: %v", err)
 	}
 
-	product, err = mysqlStore.retrieveProductByID(service.ProductID(productID))
+	*product, err = mysqlStore.Retrieve(service.ProductID(productID))
 	if err != nil {
-		return fmt.Errorf("failed to retrieve newly created product: %v", err)
+		return fmt.Errorf("error: could not retrieve newly created product: %v", err)
 	}
 
 	return nil
@@ -135,36 +66,13 @@ func (mysqlStore *MySQLStore) RetrieveAll(page, limit int) ([]*service.Product, 
 	defer rows.Close()
 
 	var products []*service.Product
-	var createdAtStr, lastUpdateStr string
-
 	for rows.Next() {
-		product := new(service.Product)
-		err := rows.Scan(
-			&product.ID,
-			&product.Name,
-			&product.Description,
-			&product.Price,
-			&product.Discount,
-			&product.Quantity,
-			&createdAtStr,
-			&lastUpdateStr,
-		)
+		product, err := scanIntoProduct(rows)
 		if err != nil {
 			return nil, err
 		}
 
-		product.CreatedAt, err = time.Parse("2006-01-02 15:04:05", createdAtStr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to pase createdAt: %v", err)
-		}
-
-		product.LastUpdated, err = time.Parse("2006-01-02 15:04:05", lastUpdateStr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to pase lastUpdated: %v", err)
-		}
-
 		products = append(products, product)
-
 	}
 
 	if err = rows.Err(); err != nil {
@@ -175,15 +83,52 @@ func (mysqlStore *MySQLStore) RetrieveAll(page, limit int) ([]*service.Product, 
 }
 
 func (mysqlStore *MySQLStore) Retrieve(id service.ProductID) (*service.Product, error) {
-	product, err := mysqlStore.retrieveProductByID(id)
+	query := `SELECT * FROM products WHERE id = ?`
+	rows, err := mysqlStore.db.Query(query, id)
 	if err != nil {
 		return nil, err
 	}
 
-	return product, nil
+	for rows.Next() {
+		return scanIntoProduct(rows)
+	}
+
+	return nil, fmt.Errorf("error: product with id %d not found", id)
 }
 
-func (mysqlStore *MySQLStore) Update(product *service.Product) error {
+func (mysqlStore *MySQLStore) Update(product **service.Product) error {
+	// Atomic increment of quantity field
+	query := `UPDATE products SET name = ?, description = ?, price = ?, discount = ?, quantity = quantity + ?, lastUpdated = ? WHERE id = ? AND quantity + ? >= 0`
+
+	result, err := mysqlStore.db.Exec(query,
+		(*product).Name,
+		(*product).Description,
+		(*product).Price,
+		(*product).Discount,
+		(*product).GetQuantityDelta(),
+		(*product).LastUpdated,
+		(*product).ID,
+		(*product).GetQuantityDelta())
+
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected > 1 {
+		return fmt.Errorf("error: more than one rows were affected. rows affected: %d", rowsAffected)
+	}
+
+	*product, err = mysqlStore.Retrieve((*product).ID)
+	if err != nil {
+		return fmt.Errorf("error: could not retrieve updated product: %v", err)
+
+	}
+
 	return nil
 }
 
@@ -191,48 +136,98 @@ func (mysqlStore *MySQLStore) Delete(product *service.Product) error {
 	return nil
 }
 
-func scanRowToProduct(row *sql.Row) (*service.Product, error) {
-	product := new(service.Product)
-	var createdAtStr, lastUpdateStr string
+func (mysqlStore *MySQLStore) InitStore(config *config.DBConfig) error {
+	mysqlConfig := mysql.Config{
+		User:                 config.User,
+		Passwd:               config.Password,
+		Addr:                 config.Address,
+		DBName:               config.Name,
+		Net:                  "tcp",
+		AllowNativePasswords: true,
+		ParseTime:            true,
+		Loc:                  time.UTC,
+	}
 
-	err := row.Scan(
+	mysqlStore.dbURL = mysqlConfig.FormatDSN()
+	db, err := sql.Open(SQL_DRIVER, mysqlStore.dbURL)
+
+	if err != nil {
+		return fmt.Errorf("error: could not acquire storage connection handle: %v", err)
+	}
+
+	mysqlStore.db = db
+
+	return nil
+}
+
+func (mysqlStore *MySQLStore) VerifyStoreConnection() error {
+	err := mysqlStore.db.Ping()
+	if err != nil {
+		return fmt.Errorf("error: could not establish connection to the storage: %v", err)
+	}
+
+	return nil
+}
+
+func (mysqlStore *MySQLStore) Close() error {
+	return mysqlStore.db.Close()
+}
+
+func (mysqlStore *MySQLStore) setUpMigration(migrationPath string) (*migrate.Migrate, error) {
+	driver, err := mysqlMigrate.WithInstance(mysqlStore.db, &mysqlMigrate.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("error: could not initialize migration driver: %v", err)
+	}
+
+	migrator, err := migrate.NewWithDatabaseInstance(
+		fmt.Sprintf("file://%s", migrationPath),
+		SQL_DRIVER,
+		driver)
+	if err != nil {
+		return nil, fmt.Errorf("error: could not establish connection to the database: %v", err)
+	}
+
+	return migrator, nil
+}
+
+func (mysqlStore *MySQLStore) RunMigrationUp(migrationPath string) error {
+	migrator, err := mysqlStore.setUpMigration(migrationPath)
+	if err != nil {
+		return err
+	}
+
+	if err := migrator.Up(); err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("error: could not run up migrations: %v", err)
+	}
+
+	return nil
+}
+
+func (mysqlStore *MySQLStore) RunMigrationDown(migrationPath string) error {
+	migrator, err := mysqlStore.setUpMigration(migrationPath)
+	if err != nil {
+		return err
+	}
+
+	if err := migrator.Down(); err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("error: run down migrations failed: %v", err)
+	}
+
+	return nil
+}
+
+func scanIntoProduct(rows *sql.Rows) (*service.Product, error) {
+	product := new(service.Product)
+	err := rows.Scan(
 		&product.ID,
 		&product.Name,
 		&product.Description,
 		&product.Price,
 		&product.Discount,
 		&product.Quantity,
-		&createdAtStr,
-		&lastUpdateStr,
+		&product.CreatedAt,
+		&product.LastUpdated,
 	)
-	if err != nil {
-		return nil, err
-	}
 
-	product.CreatedAt, err = time.Parse("2006-01-02 15:04:05", createdAtStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to pase createdAt: %v", err)
-	}
-
-	product.LastUpdated, err = time.Parse("2006-01-02 15:04:05", lastUpdateStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to pase lastUpdated: %v", err)
-	}
-
-	return product, nil
-}
-
-func (mysqlStore *MySQLStore) retrieveProductByID(id service.ProductID) (*service.Product, error) {
-	query := `SELECT * FROM products WHERE id = ?`
-	row := mysqlStore.db.QueryRow(query, id)
-
-	product, err := scanRowToProduct(row)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, err
-		}
-		return nil, err
-	}
-
-	return product, nil
+	return product, err
 }

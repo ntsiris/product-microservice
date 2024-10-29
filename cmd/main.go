@@ -16,23 +16,23 @@ func main() {
 
 	err := store.InitStore(&config.EnvDBConfig)
 	if err != nil {
-		log.Fatalf("Failed to %v", err)
+		log.Fatalf("Store Initialization %v", err)
 	}
 	defer func() {
 		if err := store.Close(); err != nil {
-			log.Fatalf("Abnormal Store Close: %v", err)
+			log.Fatalf("Store Close %v", err)
 		}
 	}()
 
 	if err = store.VerifyStoreConnection(); err != nil {
-		log.Fatalf("Failed to %v", err)
+		log.Fatalf("Verify Storage Connection %v", err)
 	}
 	log.Printf("Successfully established connection to storage component")
 
 	if config.EnvAPIServerConfig.MigrateUp {
 		log.Printf("Running Up Migrations from %s", config.EnvAPIServerConfig.MigrationPath)
 		if err := store.RunMigrationUp(config.EnvAPIServerConfig.MigrationPath); err != nil {
-			log.Fatalf("Failed to %v", err)
+			log.Fatalf("Run Up Migration %v", err)
 		}
 		log.Print("Up Migrations finished successfully!")
 	}
@@ -48,7 +48,7 @@ func main() {
 		if config.EnvAPIServerConfig.MigrateDown {
 			log.Printf("Running Down Migrations from %s", config.EnvAPIServerConfig.MigrationPath)
 			if err := store.RunMigrationDown(config.EnvAPIServerConfig.MigrationPath); err != nil {
-				log.Fatalf("Failed to %v", err)
+				log.Fatalf("Run Down Migration %v", err)
 			}
 			log.Print("Down Migrations finished successfully!")
 		}
@@ -60,6 +60,6 @@ func main() {
 	apiServerAddress := fmt.Sprintf("%s:%s", config.EnvAPIServerConfig.PublicHost, config.EnvAPIServerConfig.Port)
 	apiServer := api.NewAPIServer(apiServerAddress, &store)
 	if err := apiServer.Run(); err != nil {
-		log.Fatalf("Failed to start API server: %v\n", err)
+		log.Fatalf("Start API server %v\n", err)
 	}
 }
