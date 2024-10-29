@@ -26,6 +26,7 @@ func initAPIServerConfigFromEnv() APIServerConfig {
 		MigrateUp:     getEnvBool("MIGRATE_UP", true),
 		MigrateDown:   getEnvBool("MIGRATE_DOWN", false),
 		MigrationPath: getEnv("MIGRATION_PATH", "migrations/"),
+		LogFile:       getEnv("LOG_FILE", "/var/log/product-api.log"),
 	}
 }
 

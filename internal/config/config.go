@@ -6,6 +6,7 @@ type APIServerConfig struct {
 	MigrationPath string
 	PublicHost    string
 	Port          string
+	LogFile       string
 }
 
 type DBConfig struct {
