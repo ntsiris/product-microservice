@@ -1,11 +1,47 @@
+# Makefile
+
+APP_NAME = product-microservice
+VERSION = 1.0.0
+DOCKER_IMAGE = $(APP_NAME):$(VERSION)
+DOCKER_NETWORK = app_network
+DOCKER_COMPOSE_FILE = docker/docker-compose.yml
+DOCKER_FILE = docker/Dockerfile
+
+.PHONY: all build run test docker-build docker-run docker-stop clean
+
+all: test build
+
+## Build the Go application binary
 build:
-	@go build -o bin/product cmd/main.go
+	@echo "Building the application..."
+	go build -o bin/$(APP_NAME) ./cmd
 
+## Run the application locally
+run:
+	@echo "Running the application locally..."
+	./bin/$(APP_NAME)
+
+## Run tests with coverage
 test:
-	@go test -v ./...
+	@echo "Running tests..."
+	go test -cover ./...
 
-run: build
-	@./bin/product
+## Build Docker image
+docker-build:
+	@echo "Building Docker image..."
+	docker build -t $(DOCKER_IMAGE) -f $(DOCKER_FILE) .
 
+## Run application using Docker Compose
+docker-run:
+	@echo "Running Docker Compose..."
+	docker-compose -f $(DOCKER_COMPOSE_FILE) up -d --build
+
+## Stop and remove Docker Compose containers
+docker-stop:
+	@echo "Stopping Docker Compose..."
+	docker-compose -f $(DOCKER_COMPOSE_FILE) down
+
+## Clean up generated files
 clean:
-	@ rm bin/product
+	@echo "Cleaning up..."
+	rm -f bin/$(APP_NAME)

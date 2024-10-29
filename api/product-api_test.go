@@ -2,126 +2,268 @@ package api
 
 import (
 	"bytes"
-	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"ntsiris/product-microservice/internal/mocks"
 	"ntsiris/product-microservice/internal/service"
-	"ntsiris/product-microservice/internal/storage"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-// Test handleCreate with successful product creation
-func TestHandleCreate_Success(t *testing.T) {
-	mockStore := &storage.MockProductStore{
-		CreateFn: func(p **service.Product) error {
-			return nil
-		},
-	}
-
+func setupTestProductHandler() (*ProductHandler, *mocks.MockProductStore) {
+	mockStore := mocks.NewMockProductStore()
 	handler := NewProductHandler(mockStore)
-
-	productPayload := &service.ProductCreationPayload{
-		Name:        "A Test Product",
-		Description: "A Product used for testing",
-		Price:       0.99,
-		Quantity:    1,
-	}
-
-	payloadBytes, _ := json.Marshal(productPayload)
-	request := httptest.NewRequest("POST", "/add", bytes.NewBuffer(payloadBytes))
-	request.Header.Set("Content-Type", "application/json")
-
-	recorder := httptest.NewRecorder()
-
-	makeHTTPHandleFunc(handler.handleCreate)(recorder, request)
-
-	if status := recorder.Code; status != http.StatusCreated {
-		t.Errorf("expected status code 201, got %d", status)
-	}
-
-	if mockStore.CreateCalls != 1 {
-		t.Errorf("expected CreatedOne to be called once, got %d", mockStore.CreateCalls)
-	}
+	return handler, mockStore
 }
 
-// Test handleCreate with missing request body (BadRequest)
-func TestHandleCreate_BadRequest(t *testing.T) {
-	mockStore := &storage.MockProductStore{
-		CreateFn: func(p **service.Product) error {
-			return nil // Should not be called in this test
-		},
-	}
+func TestHandleCreate(t *testing.T) {
+	handler, mockStore := setupTestProductHandler()
 
-	handler := NewProductHandler(mockStore)
+	t.Run("successfully creates a product", func(t *testing.T) {
+		payload := `{"name": "Test Product", "price": 100, "quantity": 10, "discount": 5.0, "description": "Test description"}`
+		req := httptest.NewRequest(http.MethodPost, "/product/create", bytes.NewBufferString(payload))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
 
-	// Prepare payload with empty body:
-	request := httptest.NewRequest("POST", "/add", nil)
-	request.Header.Set("Content-Type", "application/json")
+		handlerFunc := makeHTTPHandleFunc(handler.handleCreate)
+		handlerFunc(rec, req)
 
-	recorder := httptest.NewRecorder()
+		assert.Equal(t, http.StatusCreated, rec.Code)
+		assert.Equal(t, int64(1), int64(mockStore.Products[1].ID))
+		assert.Equal(t, "Test Product", mockStore.Products[1].Name)
+		assert.Equal(t, "Test description", mockStore.Products[1].Description)
+		assert.Equal(t, float64(100), float64(mockStore.Products[1].Price))
+		assert.Equal(t, 10, mockStore.Products[1].Quantity)
+		assert.Equal(t, float32(5.0), float32(mockStore.Products[1].Discount))
+	})
 
-	makeHTTPHandleFunc(handler.handleCreate)(recorder, request)
+	t.Run("returns 400 for invalid payload", func(t *testing.T) {
+		payload := `{"name": ""}`
+		req := httptest.NewRequest(http.MethodPost, "/product/create", bytes.NewBufferString(payload))
+		rec := httptest.NewRecorder()
 
-	if status := recorder.Code; status != http.StatusBadRequest {
-		t.Errorf("expected status code 400, got %d", status)
-	}
+		handlerFunc := makeHTTPHandleFunc(handler.handleCreate)
+		handlerFunc(rec, req)
 
-	if mockStore.CreateCalls != 0 {
-		t.Errorf("expected CreateOne not to be called, got %d", mockStore.CreateCalls)
-	}
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("returns 500 on store error", func(t *testing.T) {
+		mockStore.Err = errors.New("db error")
+		payload := `{"name": "Test Product", "price": 100, "quantity": 10, "discount": 5.0, "description": "Test description"}`
+		req := httptest.NewRequest(http.MethodPost, "/product/create", bytes.NewBufferString(payload))
+		rec := httptest.NewRecorder()
+
+		handlerFunc := makeHTTPHandleFunc(handler.handleCreate)
+		handlerFunc(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		mockStore.Err = nil // Reset error for other tests
+	})
+
+	t.Run("fails with missing required fields", func(t *testing.T) {
+		// Missing fields such as "price" and "quantity"
+		payload := `{"name": "Test Product", "description": "This is a test"}`
+		req := httptest.NewRequest(http.MethodPost, "/product/create", bytes.NewBufferString(payload))
+		rec := httptest.NewRecorder()
+
+		handlerFunc := makeHTTPHandleFunc(handler.handleCreate)
+		handlerFunc(rec, req)
+
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("fails with invalid data type for price", func(t *testing.T) {
+		payload := `{"name": "Test Product", "price": "invalid_price", "quantity": 10, "description": "Test description"}`
+		req := httptest.NewRequest(http.MethodPost, "/product/create", bytes.NewBufferString(payload))
+		rec := httptest.NewRecorder()
+
+		handlerFunc := makeHTTPHandleFunc(handler.handleCreate)
+		handlerFunc(rec, req)
+
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
 }
 
-// Test handleRetrieveOne with a successful product retrieval
-func TestRetrieveOne(t *testing.T) {
-	mockStore := &storage.MockProductStore{
-		RetrieveFn: func(p service.ProductID) (*service.Product, error) {
-			return &service.Product{
-				ID:          1,
-				Name:        "Test Product",
-				Description: "A product for testing",
-				Price:       0.99,
-			}, nil
-		},
-	}
+func TestHandleRetrieve(t *testing.T) {
+	handler, mockStore := setupTestProductHandler()
 
-	handler := NewProductHandler(mockStore)
+	// Add a product to retrieve
+	mockStore.Products[1] = &service.Product{ID: 1, Name: "Test Product"}
 
-	request := httptest.NewRequest("GET", "/get/", nil)
-	request.SetPathValue("id", "1")
-	recorder := httptest.NewRecorder()
+	t.Run("successfully retrieves a product", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/product/1", nil)
+		req.SetPathValue("id", "1")
+		rec := httptest.NewRecorder()
 
-	makeHTTPHandleFunc(handler.handleRetrieve)(recorder, request)
+		handlerFunc := makeHTTPHandleFunc(handler.handleRetrieve)
+		handlerFunc(rec, req)
 
-	if status := recorder.Code; status != http.StatusOK {
-		t.Errorf("expected status code 200, got %d", status)
-	}
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
 
-	if mockStore.RetrieveCalls != 1 {
-		t.Errorf("expected RetrieveOne to be called once, got %d", mockStore.RetrieveCalls)
-	}
+	t.Run("returns 404 if product not found", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/product/999", nil)
+		req.SetPathValue("id", "999")
+		rec := httptest.NewRecorder()
+
+		handlerFunc := makeHTTPHandleFunc(handler.handleRetrieve)
+		handlerFunc(rec, req)
+
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
 }
 
-func TestHandleRetrieveOne_NotFound(t *testing.T) {
-	mockStore := &storage.MockProductStore{
-		RetrieveFn: func(p service.ProductID) (*service.Product, error) {
-			return nil, fmt.Errorf("no product found") // Simulate no product found
-		},
-	}
+func TestHandleRetrieveAll(t *testing.T) {
+	handler, mockStore := setupTestProductHandler()
 
-	handler := NewProductHandler(mockStore)
+	// Populate mock store with test products
+	mockStore.Products[1] = &service.Product{ID: 1, Name: "Product 1"}
+	mockStore.Products[2] = &service.Product{ID: 2, Name: "Product 2"}
 
-	request := httptest.NewRequest("GET", "/get/", nil)
-	request.SetPathValue("id", "99")
-	recorder := httptest.NewRecorder()
+	t.Run("successfully retrieves all products", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/product?page=1&limit=10", nil)
+		rec := httptest.NewRecorder()
 
-	makeHTTPHandleFunc(handler.handleRetrieve)(recorder, request)
+		handlerFunc := makeHTTPHandleFunc(handler.handleRetrieveAll)
+		handlerFunc(rec, req)
 
-	if status := recorder.Code; status != http.StatusNotFound {
-		t.Errorf("expected status code 404, got %d", status)
-	}
+		assert.Equal(t, http.StatusOK, rec.Code)
+		// TODO: check the body here for the correct JSON response.
+	})
 
-	if mockStore.RetrieveCalls != 1 {
-		t.Errorf("expected RetrieveOne to be called once, got %d", mockStore.CreateCalls)
-	}
+	t.Run("returns empty list if no products found", func(t *testing.T) {
+		// Clear products
+		mockStore.Products = make(map[int64]*service.Product)
+
+		req := httptest.NewRequest(http.MethodGet, "/product?page=1&limit=10", nil)
+		rec := httptest.NewRecorder()
+
+		handlerFunc := makeHTTPHandleFunc(handler.handleRetrieveAll)
+		handlerFunc(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.JSONEq(t, `[]`, rec.Body.String())
+	})
+
+	t.Run("returns 400 for invalid pagination parameters", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/product?page=abc&limit=-1", nil)
+		rec := httptest.NewRecorder()
+
+		handlerFunc := makeHTTPHandleFunc(handler.handleRetrieveAll)
+		handlerFunc(rec, req)
+
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("returns 500 on store error", func(t *testing.T) {
+		mockStore.Err = errors.New("internal store error")
+		req := httptest.NewRequest(http.MethodGet, "/product?page=1&limit=10", nil)
+		rec := httptest.NewRecorder()
+
+		handlerFunc := makeHTTPHandleFunc(handler.handleRetrieveAll)
+		handlerFunc(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		mockStore.Err = nil // Reset error for other tests
+	})
+}
+
+func TestHandleUpdate(t *testing.T) {
+	handler, mockStore := setupTestProductHandler()
+
+	// Add a product to update
+	mockStore.Products[1] = &service.Product{ID: 1, Name: "Original Product"}
+
+	t.Run("successfully updates a product", func(t *testing.T) {
+		payload := `{"id": 1, "name": "Updated Product", "price": 150, "quantity": 20, "description": "Updated description"}`
+		req := httptest.NewRequest(http.MethodPut, "/product/update", bytes.NewBufferString(payload))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handlerFunc := makeHTTPHandleFunc(handler.handleUpdate)
+		handlerFunc(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "Updated Product", mockStore.Products[1].Name)
+	})
+
+	t.Run("returns 404 if product not found", func(t *testing.T) {
+		payload := `{"id": 999, "name": "Non-existent Product"}`
+		req := httptest.NewRequest(http.MethodPut, "/product/update", bytes.NewBufferString(payload))
+		rec := httptest.NewRecorder()
+
+		handlerFunc := makeHTTPHandleFunc(handler.handleUpdate)
+		handlerFunc(rec, req)
+
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("fails with non-existent product ID", func(t *testing.T) {
+		payload := `{"id": 999, "name": "Updated Product"}`
+		req := httptest.NewRequest(http.MethodPut, "/product/update", bytes.NewBufferString(payload))
+		rec := httptest.NewRecorder()
+
+		handlerFunc := makeHTTPHandleFunc(handler.handleUpdate)
+		handlerFunc(rec, req)
+
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("fails with invalid data type in update payload", func(t *testing.T) {
+		payload := `{"id": 1, "price": "invalid_price", "name": "Updated Product"}`
+		req := httptest.NewRequest(http.MethodPut, "/product/update", bytes.NewBufferString(payload))
+		rec := httptest.NewRecorder()
+
+		handlerFunc := makeHTTPHandleFunc(handler.handleUpdate)
+		handlerFunc(rec, req)
+
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("partially updates product with valid fields", func(t *testing.T) {
+		payload := `{"id": 1, "name": "Partially Updated Product"}`
+		req := httptest.NewRequest(http.MethodPut, "/product/update", bytes.NewBufferString(payload))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		handlerFunc := makeHTTPHandleFunc(handler.handleUpdate)
+		handlerFunc(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "Partially Updated Product", mockStore.Products[1].Name)
+	})
+}
+
+func TestHandleDelete(t *testing.T) {
+	handler, mockStore := setupTestProductHandler()
+
+	// Add a product to delete
+	mockStore.Products[1] = &service.Product{ID: 1, Name: "Test Product"}
+
+	t.Run("successfully deletes a product", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/product/delete/1", nil)
+		req.SetPathValue("id", "1")
+		rec := httptest.NewRecorder()
+
+		handlerFunc := makeHTTPHandleFunc(handler.handleDelete)
+		handlerFunc(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		_, exists := mockStore.Products[1]
+		assert.False(t, exists)
+	})
+
+	t.Run("returns 404 if product to delete not found", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/product/delete/999", nil)
+		req.SetPathValue("id", "999")
+		rec := httptest.NewRecorder()
+
+		handlerFunc := makeHTTPHandleFunc(handler.handleDelete)
+		handlerFunc(rec, req)
+
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+	})
 }

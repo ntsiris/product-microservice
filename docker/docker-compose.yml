@@ -1,0 +1,59 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: product-microservice:1.0.0
+    container_name: product-microservice
+    environment:
+      - PORT=8080
+      - PUBLIC_HOST=app
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_NAME=productDB
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - MIGRATE_UP=true
+      - MIGRATE_DOWN=false
+      - MIGRATION_PATH=migrations/
+    restart: on-failure
+    ports:
+      - "8080:8080"
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ../migrations:/app/migrations  # Adjusted path for migrations
+    depends_on:
+      - db
+    links:
+      - db
+
+  db:
+    image: mysql:8.0
+    container_name: mysql-db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: productDB
+    ports:
+      - "3306:3306"
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -psecretpassword || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - db_data:/var/lib/mysql
+
+networks:
+  app_network:
+    name: app_network
+
+volumes:
+  db_data:

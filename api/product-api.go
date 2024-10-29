@@ -121,12 +121,8 @@ func (handler *ProductHandler) handleRetrieveAll(w http.ResponseWriter, r *http.
 		}
 	}
 
-	if products == nil {
-		return &types.APIError{
-			Code:      http.StatusNotFound,
-			Message:   "Products not found",
-			Operation: types.FormatOperation(r.Method, r.URL.Path),
-		}
+	if len(products) == 0 {
+		products = []*service.Product{}
 	}
 
 	return utils.WriteJSON(w, http.StatusOK, products)
