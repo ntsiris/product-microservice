@@ -133,6 +133,18 @@ func (mysqlStore *MySQLStore) Update(product **service.Product) error {
 }
 
 func (mysqlStore *MySQLStore) Delete(product *service.Product) error {
+	query := `DELETE FROM products WHERE id = ?`
+
+	result, err := mysqlStore.db.Exec(query, product.ID)
+	if err != nil {
+		return err
+	}
+
+	_, err = result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 

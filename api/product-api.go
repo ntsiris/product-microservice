@@ -30,35 +30,25 @@ func NewProductHandler(userStore storage.ProductStore) *ProductHandler {
 }
 
 func (handler *ProductHandler) RegisterRoutes(router *http.ServeMux) {
-	router.HandleFunc("POST /create", makeHTTPHandleFunc(handler.handleCreate))
+	router.HandleFunc("POST /product/create", makeHTTPHandleFunc(handler.handleCreate))
 
 	router.HandleFunc("GET /product/{id}", makeHTTPHandleFunc(handler.handleRetrieve))
-	router.HandleFunc("GET /products", makeHTTPHandleFunc(handler.handleRetrieveAll))
+	router.HandleFunc("GET /product", makeHTTPHandleFunc(handler.handleRetrieveAll))
 
-	router.HandleFunc("PUT /update/", makeHTTPHandleFunc(handler.handleUpdate))
+	router.HandleFunc("PUT /product/update/", makeHTTPHandleFunc(handler.handleUpdate))
 
-	router.HandleFunc("DELETE /delete/{id}", makeHTTPHandleFunc(handler.handleDelete))
+	router.HandleFunc("DELETE /product/delete/{id}", makeHTTPHandleFunc(handler.handleDelete))
 }
 
 func (handler *ProductHandler) handleCreate(w http.ResponseWriter, r *http.Request) error {
 	productPayload := new(service.ProductCreationPayload)
 
-	if err := utils.ParseJSON(r, productPayload); err != nil {
-		return &types.APIError{
-			Code:          http.StatusBadRequest,
-			Message:       "Request Body parsing failed",
-			Operation:     types.FormatOperation(r.Method, r.URL.Path),
-			EmbeddedError: err.Error(),
-		}
+	if err := parsePayload(r, productPayload); err != nil {
+		return err
 	}
 
-	if err := utils.Validate.Struct(productPayload); err != nil {
-		return &types.APIError{
-			Code:          http.StatusBadRequest,
-			Message:       "Request payload validation failed",
-			Operation:     types.FormatOperation(r.Method, r.URL.Path),
-			EmbeddedError: err.(validator.ValidationErrors).Error(),
-		}
+	if err := validateStruct(r, productPayload); err != nil {
+		return err
 	}
 
 	product := service.NewProduct(productPayload)
@@ -76,25 +66,14 @@ func (handler *ProductHandler) handleCreate(w http.ResponseWriter, r *http.Reque
 }
 
 func (handler *ProductHandler) handleRetrieve(w http.ResponseWriter, r *http.Request) error {
-	requestedIDstr := r.PathValue("id")
-
-	requestedID, err := strconv.ParseInt(requestedIDstr, 10, 64)
+	requestedID, err := parseIntPathValue(r, "id")
 	if err != nil {
-		return &types.APIError{
-			Code:          http.StatusBadRequest,
-			Message:       "Invalid format of ID",
-			Operation:     types.FormatOperation(r.Method, r.URL.Path),
-			EmbeddedError: err.Error(),
-		}
+		return err
 	}
-	requestedProduct, err := handler.store.Retrieve(service.ProductID(requestedID))
+
+	requestedProduct, err := handler.retrieveProduct(r, service.ProductID(requestedID))
 	if err != nil {
-		return &types.APIError{
-			Code:          http.StatusNotFound,
-			Message:       "Product not found",
-			Operation:     types.FormatOperation(r.Method, r.URL.Path),
-			EmbeddedError: err.Error(),
-		}
+		return err
 	}
 
 	return utils.WriteJSON(w, http.StatusOK, requestedProduct)
@@ -155,33 +134,17 @@ func (handler *ProductHandler) handleRetrieveAll(w http.ResponseWriter, r *http.
 
 func (handler *ProductHandler) handleUpdate(w http.ResponseWriter, r *http.Request) error {
 	updatePayload := service.NewDefaultUpdatePayload()
-
-	if err := utils.ParseJSON(r, updatePayload); err != nil {
-		return &types.APIError{
-			Code:          http.StatusBadRequest,
-			Message:       "Request Body parsing failed",
-			Operation:     types.FormatOperation(r.Method, r.URL.Path),
-			EmbeddedError: err.Error(),
-		}
+	if err := parsePayload(r, updatePayload); err != nil {
+		return err
 	}
 
-	if err := utils.Validate.Struct(updatePayload); err != nil {
-		return &types.APIError{
-			Code:          http.StatusBadRequest,
-			Message:       "Request payload validation failed",
-			Operation:     types.FormatOperation(r.Method, r.URL.Path),
-			EmbeddedError: err.(validator.ValidationErrors).Error(),
-		}
+	if err := validateStruct(r, updatePayload); err != nil {
+		return err
 	}
 
-	product, err := handler.store.Retrieve(updatePayload.ID)
+	product, err := handler.retrieveProduct(r, updatePayload.ID)
 	if err != nil {
-		return &types.APIError{
-			Code:          http.StatusNotFound,
-			Message:       "Product not found",
-			Operation:     types.FormatOperation(r.Method, r.URL.Path),
-			EmbeddedError: err.Error(),
-		}
+		return err
 	}
 
 	service.UpdateProduct(product, updatePayload)
@@ -200,5 +163,82 @@ func (handler *ProductHandler) handleUpdate(w http.ResponseWriter, r *http.Reque
 }
 
 func (handler *ProductHandler) handleDelete(w http.ResponseWriter, r *http.Request) error {
+
+	requestedID, err := parseIntPathValue(r, "id")
+	if err != nil {
+		return err
+	}
+
+	requestedProduct, err := handler.retrieveProduct(r, service.ProductID(requestedID))
+	if err != nil {
+		return err
+	}
+
+	err = handler.store.Delete(requestedProduct)
+	if err != nil {
+		return &types.APIError{
+			Code:          http.StatusInternalServerError,
+			Message:       "Product not deleted",
+			Operation:     types.FormatOperation(r.Method, r.URL.Path),
+			EmbeddedError: err.Error(),
+		}
+	}
+
+	return utils.WriteJSON(w, http.StatusOK, requestedProduct)
+}
+
+func (handler *ProductHandler) retrieveProduct(r *http.Request, productID service.ProductID) (*service.Product, error) {
+	requestedProduct, err := handler.store.Retrieve(service.ProductID(productID))
+	if err != nil {
+		return nil, &types.APIError{
+			Code:          http.StatusNotFound,
+			Message:       "Product not found",
+			Operation:     types.FormatOperation(r.Method, r.URL.Path),
+			EmbeddedError: err.Error(),
+		}
+	}
+
+	return requestedProduct, nil
+}
+
+func parsePayload(r *http.Request, payload any) error {
+	if err := utils.ParseJSON(r, payload); err != nil {
+		return &types.APIError{
+			Code:          http.StatusBadRequest,
+			Message:       "Request Body parsing failed",
+			Operation:     types.FormatOperation(r.Method, r.URL.Path),
+			EmbeddedError: err.Error(),
+		}
+	}
+
 	return nil
+}
+
+func validateStruct(r *http.Request, st any) error {
+	if err := utils.Validate.Struct(st); err != nil {
+		return &types.APIError{
+			Code:          http.StatusBadRequest,
+			Message:       "Request payload validation failed",
+			Operation:     types.FormatOperation(r.Method, r.URL.Path),
+			EmbeddedError: err.(validator.ValidationErrors).Error(),
+		}
+	}
+
+	return nil
+}
+
+func parseIntPathValue(r *http.Request, name string) (int64, error) {
+	requestedValueStr := r.PathValue(name)
+
+	value, err := strconv.ParseInt(requestedValueStr, 10, 64)
+	if err != nil {
+		return -1, &types.APIError{
+			Code:          http.StatusBadRequest,
+			Message:       "Invalid format of ID",
+			Operation:     types.FormatOperation(r.Method, r.URL.Path),
+			EmbeddedError: err.Error(),
+		}
+	}
+
+	return value, nil
 }
