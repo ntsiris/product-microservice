@@ -2,12 +2,13 @@ package config
 
 // APIServerConfig holds the configuration settings for the API server.
 type APIServerConfig struct {
-	MigrateUp     bool   // MigrateUp indicates whether database migrations should run in the upward direction on startup.
-	MigrateDown   bool   // MigrateDown indicates whether database migrations should run in the downward direction.
-	MigrationPath string // MigrationPath specifies the path where migration files are located.
-	PublicHost    string // PublicHost is the hostname or IP address where the API server is accessible.
-	Port          string // Port is the network port on which the API server listens.
-	LogFile       string // LogFile specifies the file path for storing server logs.
+	MigrateUp     bool
+	MigrateDown   bool
+	MigrationPath string
+	PublicHost    string
+	Port          string
+	LogFile       string
+	JWTSecret     string
 }
 
 // StorageConfig holds the configuration settings for the storage (database) connection.

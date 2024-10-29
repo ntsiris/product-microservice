@@ -38,6 +38,7 @@ func initAPIServerConfigFromEnv() APIServerConfig {
 		MigrateDown:   getEnvBool("MIGRATE_DOWN", false),
 		MigrationPath: getEnv("MIGRATION_PATH", "migrations/"),
 		LogFile:       getEnv("LOG_FILE", "/var/log/product-api.log"),
+		JWTSecret:     getEnv("JWT_SECRET", "never-do-that"),
 	}
 }
 

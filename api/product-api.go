@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"ntsiris/product-microservice/internal/auth"
 	"ntsiris/product-microservice/internal/service"
 	"ntsiris/product-microservice/internal/storage"
 	"ntsiris/product-microservice/internal/types"
@@ -34,20 +35,23 @@ func NewProductHandler(userStore storage.ProductStore) *ProductHandler {
 
 // RegisterRoutes registers the product-related routes to the provided router.
 func (handler *ProductHandler) RegisterRoutes(router *http.ServeMux) {
-	router.HandleFunc("POST /product/create", makeHTTPHandleFunc(handler.handleCreate))
+	router.HandleFunc("GET /auth", makeHTTPHandleFunc(auth.HandleAuth))
+
+	router.HandleFunc("POST /product/create", auth.JWTAuthMiddleware("create")(makeHTTPHandleFunc(handler.handleCreate)))
 
 	router.HandleFunc("GET /product/{id}", makeHTTPHandleFunc(handler.handleRetrieve))
 	router.HandleFunc("GET /product", makeHTTPHandleFunc(handler.handleRetrieveAll))
 
-	router.HandleFunc("PUT /product/update/", makeHTTPHandleFunc(handler.handleUpdate))
+	router.HandleFunc("PUT /product/update/", auth.JWTAuthMiddleware("update")(makeHTTPHandleFunc(handler.handleUpdate)))
 
-	router.HandleFunc("DELETE /product/delete/{id}", makeHTTPHandleFunc(handler.handleDelete))
+	router.HandleFunc("DELETE /product/delete/{id}", auth.JWTAuthMiddleware("delete")(makeHTTPHandleFunc(handler.handleDelete)))
 }
 
 // handleCreate handles the creation of a new product by parsing the payload, validating it, and storing it in the database.
 func (handler *ProductHandler) handleCreate(w http.ResponseWriter, r *http.Request) error {
-	productPayload := new(service.ProductCreationPayload)
+	defer r.Body.Close()
 
+	productPayload := new(service.ProductCreationPayload)
 	if err := parsePayload(r, productPayload); err != nil {
 		return err
 	}
@@ -137,6 +141,8 @@ func (handler *ProductHandler) handleRetrieveAll(w http.ResponseWriter, r *http.
 
 // handleUpdate handles updating an existing product's details based on the payload.
 func (handler *ProductHandler) handleUpdate(w http.ResponseWriter, r *http.Request) error {
+	defer r.Body.Close()
+
 	updatePayload := service.NewDefaultUpdatePayload()
 	if err := parsePayload(r, updatePayload); err != nil {
 		return err
